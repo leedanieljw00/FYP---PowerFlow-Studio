@@ -30,8 +30,16 @@ class EmsDashboardScreen extends ConsumerWidget {
       dispatchedMap.addAll(edState.lossResult!.powers);
     }
 
+    int initIdx = 0;
+    final sub = Uri.base.queryParameters['subtab'];
+    if (sub != null) {
+      final parsed = int.tryParse(sub);
+      if (parsed != null && parsed >= 0 && parsed < 2) initIdx = parsed;
+    }
+
     return DefaultTabController(
       length: 2,
+      initialIndex: initIdx,
       child: Scaffold(
         appBar: AppBar(
           title: Row(

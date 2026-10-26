@@ -23,7 +23,13 @@ class _StepInspectionScreenState extends ConsumerState<StepInspectionScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    int initIdx = 0;
+    final sub = Uri.base.queryParameters['subtab'];
+    if (sub != null) {
+      final parsed = int.tryParse(sub);
+      if (parsed != null && parsed >= 0 && parsed < 4) initIdx = parsed;
+    }
+    _tabController = TabController(length: 4, vsync: this, initialIndex: initIdx);
   }
 
   @override

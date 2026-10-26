@@ -79,6 +79,44 @@ class MainNavigationShell extends StatefulWidget {
 class _MainNavigationShellState extends State<MainNavigationShell> {
   int _currentIndex = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    final tabParam = Uri.base.queryParameters['tab'];
+    if (tabParam != null) {
+      final tabInt = int.tryParse(tabParam);
+      if (tabInt != null && tabInt >= 0 && tabInt < _screens.length) {
+        _currentIndex = tabInt;
+      } else {
+        switch (tabParam.toLowerCase()) {
+          case 'sld':
+            _currentIndex = 0;
+            break;
+          case 'ems':
+            _currentIndex = 1;
+            break;
+          case 'powerflow':
+            _currentIndex = 2;
+            break;
+          case 'dispatch':
+          case 'ed':
+            _currentIndex = 3;
+            break;
+          case 'frequency':
+          case 'lfc':
+            _currentIndex = 4;
+            break;
+          case 'inspection':
+            _currentIndex = 5;
+            break;
+          case 'formulas':
+            _currentIndex = 6;
+            break;
+        }
+      }
+    }
+  }
+
   final List<Widget> _screens = const [
     SldCanvasScreen(),
     EmsDashboardScreen(),
