@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/math/economic_dispatch/generator_model.dart';
@@ -27,7 +28,7 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -87,6 +88,7 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
             Tab(icon: Icon(Icons.tune), text: 'Units & Demand'),
             Tab(icon: Icon(Icons.show_chart), text: 'Equal Slope (ICR)'),
             Tab(icon: Icon(Icons.history), text: 'Iteration Steps'),
+            Tab(icon: Icon(Icons.school_outlined), text: 'Exam Step-by-Step'),
           ],
         ),
       ),
@@ -96,6 +98,7 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
           _buildConfigurationTab(context, state, notifier, theme, isDark),
           _buildChartTab(context, state, theme, isDark),
           _buildStepsTab(context, state, theme, isDark),
+          _buildExamStepByStepTab(context, state, theme, isDark),
         ],
       ),
     );
@@ -740,6 +743,512 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
         final parsed = double.tryParse(text);
         if (parsed != null) onChanged(parsed);
       },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tab 4: Examination Step-by-Step Hand Calculation Walkthrough
+  // ---------------------------------------------------------------------------
+  Widget _buildExamStepByStepTab(
+    BuildContext context,
+    EconomicDispatchState state,
+    ThemeData theme,
+    bool isDark,
+  ) {
+    final activeUnits = state.units.where((u) => u.isActive).toList();
+    if (activeUnits.isEmpty) {
+      return const Center(child: Text('No active generator units to solve.'));
+    }
+
+    final pDemand = state.powerDemand;
+    final includeLosses = state.includeLosses;
+
+    // Intermediate analytical sums
+    double sumInvTwoGamma = 0.0;
+    double sumBetaOverTwoGamma = 0.0;
+
+    for (final u in activeUnits) {
+      final twoGamma = 2.0 * u.gamma;
+      if (twoGamma > 0) {
+        sumInvTwoGamma += 1.0 / twoGamma;
+        sumBetaOverTwoGamma += u.beta / twoGamma;
+      }
+    }
+
+    final unconstrainedLambda = sumInvTwoGamma > 0
+        ? (pDemand + sumBetaOverTwoGamma) / sumInvTwoGamma
+        : 0.0;
+
+    // Dispatched powers and final lambda
+    final finalLambda = includeLosses
+        ? (state.lossResult?.lambda ?? unconstrainedLambda)
+        : (state.losslessResult?.lambda ?? unconstrainedLambda);
+
+    final finalPowers = includeLosses
+        ? (state.lossResult?.powers ?? {})
+        : (state.losslessResult?.powers ?? {});
+
+    final totalCost = includeLosses
+        ? (state.lossResult?.totalCost ?? 0.0)
+        : (state.losslessResult?.totalCost ?? 0.0);
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Exam Scenario Banner Card
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.school, color: Colors.blueAccent, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'EE4530 Examination Working: Economic Dispatch',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          Text(
+                            'Step-by-step analytical derivation for examination hand calculations',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Chip(
+                      label: Text(
+                        includeLosses ? 'LOSSY (B-MATRIX)' : 'LOSSLESS (EQUAL SLOPE)',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                      backgroundColor: includeLosses
+                          ? Colors.purple.withValues(alpha: 0.15)
+                          : Colors.teal.withValues(alpha: 0.15),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Given System Demand: P_D = ${pDemand.toStringAsFixed(1)} MW   ·   Active Units: ${activeUnits.length}',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 1: Formulate Incremental Fuel Cost (ICR)
+        _buildExamStepCard(
+          stepNumber: 1,
+          title: 'Formulate Incremental Fuel Cost (ICR) Equations',
+          objective: 'Differentiate each unit quadratic fuel cost function to obtain the equal incremental cost condition.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _formulaBox(
+                r'\text{Equal Slope Criterion: } \quad \frac{dC_i}{dP_i} = \beta_i + 2\gamma_i P_i = \lambda',
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Applying the derivative to each thermal generator in the network:',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              for (var i = 0; i < activeUnits.length; i++) ...[
+                final u = activeUnits[i];
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.black26 : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${u.name}: ',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      Expanded(
+                        child: Text(
+                          'ICR_${i + 1} = ${u.beta.toStringAsFixed(3)} + ${(2.0 * u.gamma).toStringAsFixed(4)}·P_${i + 1} = λ',
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.blueAccent),
+                        ),
+                      ),
+                      Text(
+                        'limits: [${u.pMin.toStringAsFixed(0)}, ${u.pMax.toStringAsFixed(0)}] MW',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 2: Invert to Express P_i(lambda)
+        _buildExamStepCard(
+          stepNumber: 2,
+          title: 'Express Generator Power as a Function of System Lambda P_i(λ)',
+          objective: 'Rearrange each marginal cost equation to express power P_i in terms of λ.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _formulaBox(
+                r'P_i(\lambda) = \frac{\lambda - \beta_i}{2\gamma_i} = \left(\frac{1}{2\gamma_i}\right)\lambda - \left(\frac{\beta_i}{2\gamma_i}\right)',
+              ),
+              const SizedBox(height: 10),
+              for (var i = 0; i < activeUnits.length; i++) ...[
+                final u = activeUnits[i];
+                final twoG = 2.0 * u.gamma;
+                final invTwoG = twoG > 0 ? 1.0 / twoG : 0.0;
+                final betaOverTwoG = twoG > 0 ? u.beta / twoG : 0.0;
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    'P_${i + 1}(λ) = (λ - ${u.beta.toStringAsFixed(3)}) / ${twoG.toStringAsFixed(4)} = ${invTwoG.toStringAsFixed(3)}·λ - ${betaOverTwoG.toStringAsFixed(3)}',
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 3: Substitute into Power Balance and Solve for Lambda*
+        _buildExamStepCard(
+          stepNumber: 3,
+          title: 'Substitute into Power Balance Equation & Solve for λ*',
+          objective: 'Equate the total generation sum to the required demand to solve for the unconstrained system λ*.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _formulaBox(
+                r'\sum_{i=1}^N P_i(\lambda) = P_D \implies \lambda^* = \frac{P_D + \sum_{i=1}^N \frac{\beta_i}{2\gamma_i}}{\sum_{i=1}^N \frac{1}{2\gamma_i}}',
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '• Sum of slopes:  Σ [1 / (2γ_i)] = ${sumInvTwoGamma.toStringAsFixed(4)}',
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '• Sum of intercepts:  Σ [β_i / (2γ_i)] = ${sumBetaOverTwoGamma.toStringAsFixed(4)} MW',
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '• Numerator:  P_D + Σ [β_i / (2γ_i)] = ${pDemand.toStringAsFixed(1)} + ${sumBetaOverTwoGamma.toStringAsFixed(4)} = ${(pDemand + sumBetaOverTwoGamma).toStringAsFixed(4)} MW',
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    ),
+                    const Divider(height: 16),
+                    Text(
+                      'λ^* = ${(pDemand + sumBetaOverTwoGamma).toStringAsFixed(4)} / ${sumInvTwoGamma.toStringAsFixed(4)} = ${unconstrainedLambda.toStringAsFixed(4)} \$/MWh',
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Colors.blueAccent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 4: Calculate Individual Power Allocations & Check Limits
+        _buildExamStepCard(
+          stepNumber: 4,
+          title: 'Calculate Individual Allocations & Check Physical Limits',
+          objective: 'Substitute λ* back into each generator formula and verify against [P_min, P_max].',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < activeUnits.length; i++) ...[
+                final u = activeUnits[i];
+                final twoG = 2.0 * u.gamma;
+                final pUnconstrained = twoG > 0 ? (unconstrainedLambda - u.beta) / twoG : 0.0;
+                final isViolatedMin = pUnconstrained < u.pMin;
+                final isViolatedMax = pUnconstrained > u.pMax;
+                final isViolated = isViolatedMin || isViolatedMax;
+
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isViolated
+                        ? (isDark ? Colors.red.withValues(alpha: 0.15) : Colors.red.shade50)
+                        : (isDark ? Colors.green.withValues(alpha: 0.1) : Colors.green.shade50),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isViolated ? Colors.redAccent : Colors.green.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isViolated ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+                        color: isViolated ? Colors.redAccent : Colors.green,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'P_${i + 1} = (${unconstrainedLambda.toStringAsFixed(4)} - ${u.beta.toStringAsFixed(3)}) / ${twoG.toStringAsFixed(4)} = ${pUnconstrained.toStringAsFixed(2)} MW',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12),
+                            ),
+                            Text(
+                              isViolated
+                                  ? (isViolatedMin
+                                      ? 'VIOLATION: ${pUnconstrained.toStringAsFixed(2)} < P_min (${u.pMin.toStringAsFixed(0)} MW) → Clamp to P_min!'
+                                      : 'VIOLATION: ${pUnconstrained.toStringAsFixed(2)} > P_max (${u.pMax.toStringAsFixed(0)} MW) → Clamp to P_max!')
+                                  : 'Within physical bounds [${u.pMin.toStringAsFixed(0)}, ${u.pMax.toStringAsFixed(0)}] MW',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isViolated ? Colors.redAccent : Colors.green.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 5: Final Dispatched Solution & Total Cost
+        _buildExamStepCard(
+          stepNumber: 5,
+          title: 'Final Dispatched Operating Points & Total Operating Cost',
+          objective: 'Present the final converged dispatch vector and compute the total hourly fuel expenditure.',
+          theme: theme,
+          isDark: isDark,
+          isHighlighted: true,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Final Cleared System Marginal Cost (λ):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        Text(
+                          '${finalLambda.toStringAsFixed(4)} \$/MWh',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'monospace', color: Colors.blueAccent),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 16),
+                    for (var i = 0; i < activeUnits.length; i++) ...[
+                      final u = activeUnits[i];
+                      final pFinal = finalPowers[u.id] ?? 0.0;
+                      final unitCost = u.alpha + u.beta * pFinal + u.gamma * pFinal * pFinal;
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('${u.name} (P_${i + 1}):', style: const TextStyle(fontSize: 12)),
+                            Text(
+                              '${pFinal.toStringAsFixed(2)} MW  (C_${i + 1} = \$${unitCost.toStringAsFixed(2)}/hr)',
+                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const Divider(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total Hourly Fuel Cost (C_total):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        Text(
+                          '\$${totalCost.toStringAsFixed(2)} / hr',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            fontFamily: 'monospace',
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // STEP 6: Lossy Dispatch (Only if losses included)
+        if (includeLosses) ...[
+          const SizedBox(height: 16),
+          _buildExamStepCard(
+            stepNumber: 6,
+            title: 'Transmission Loss Coordination with Kron B-Matrix',
+            objective: 'Compute transmission losses and apply penalty factors in accordance with the coordination equations.',
+            theme: theme,
+            isDark: isDark,
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _formulaBox(
+                  r'P_L = \sum_i \sum_j P_i B_{ij} P_j \quad \text{and} \quad L_i = \frac{1}{1 - \frac{\partial P_L}{\partial P_i}} \implies L_i \frac{dC_i}{dP_i} = \lambda',
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Total Transmission Losses: P_L = ${(state.lossResult?.loss ?? 0.0).toStringAsFixed(3)} MW',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 13),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Total Generation Required: Σ P_G = ${(pDemand + (state.lossResult?.loss ?? 0.0)).toStringAsFixed(2)} MW',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildExamStepCard({
+    required int stepNumber,
+    required String title,
+    required String objective,
+    required Widget content,
+    required ThemeData theme,
+    required bool isDark,
+    bool isHighlighted = false,
+  }) {
+    return Card(
+      elevation: isHighlighted ? 2 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: isHighlighted
+            ? const BorderSide(color: Colors.blueAccent, width: 1.5)
+            : BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: isHighlighted ? Colors.blueAccent : theme.colorScheme.primary,
+                  child: Text(
+                    stepNumber.toString(),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: isHighlighted ? Colors.blueAccent : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              objective,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+            ),
+            const Divider(height: 20),
+            content,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _formulaBox(String tex) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F3A66).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF0F3A66).withValues(alpha: 0.2)),
+      ),
+      child: Center(
+        child: Math.tex(
+          tex,
+          textStyle: const TextStyle(fontSize: 13),
+        ),
+      ),
     );
   }
 }

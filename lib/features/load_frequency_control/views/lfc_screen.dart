@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/math/load_frequency_control/two_area_lfc.dart';
@@ -19,7 +20,7 @@ class _LfcScreenState extends ConsumerState<LfcScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -84,6 +85,7 @@ class _LfcScreenState extends ConsumerState<LfcScreen>
             Tab(icon: Icon(Icons.settings_input_component), text: 'Area Config'),
             Tab(icon: Icon(Icons.show_chart), text: 'Transient Dynamic Δf(t)'),
             Tab(icon: Icon(Icons.hub_outlined), text: 'Interconnection & ACE'),
+            Tab(icon: Icon(Icons.school_outlined), text: 'Exam Step-by-Step'),
           ],
         ),
       ),
@@ -93,6 +95,7 @@ class _LfcScreenState extends ConsumerState<LfcScreen>
           _buildConfigTab(context, state, notifier, theme, isDark),
           _buildTransientTab(context, state, theme, isDark),
           _buildInterconnectionTab(context, state, theme, isDark),
+          _buildExamStepByStepTab(context, state, theme, isDark),
         ],
       ),
     );
@@ -716,6 +719,484 @@ class _LfcScreenState extends ConsumerState<LfcScreen>
           },
         );
       },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tab 4: Examination Step-by-Step Hand Calculation Walkthrough
+  // ---------------------------------------------------------------------------
+  Widget _buildExamStepByStepTab(
+    BuildContext context,
+    LfcState state,
+    ThemeData theme,
+    bool isDark,
+  ) {
+    final area1 = state.area1;
+    final sBase = area1.systemMvaBase;
+    final f0 = area1.nominalFreq;
+    final deltaPL_MW = state.deltaPL1_MW;
+    final deltaPL_pu = deltaPL_MW / sBase;
+    final isTwoArea = state.isTwoAreaMode;
+
+    // Single Area Calculations
+    final singleResult = state.singleAreaResult;
+    final betaSys = singleResult?.betaSys ?? area1.betaSys;
+    final deltaF_pu = betaSys > 0 ? -deltaPL_pu / betaSys : 0.0;
+    final deltaF_Hz = deltaF_pu * f0;
+    final fFinal = f0 + deltaF_Hz;
+
+    // Two Area Calculations
+    final twoResult = state.twoAreaResult;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Exam Scenario Banner
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF0FDF4),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.school, color: Colors.green, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'EE4530 Examination Working: Load Frequency Control',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          Text(
+                            'Comprehensive step-by-step hand calculation procedures for governor droop & ACE',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Chip(
+                      label: Text(
+                        isTwoArea ? 'TWO-AREA INTERCONNECTED' : 'SINGLE-AREA DROOP',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                      backgroundColor: isTwoArea
+                          ? Colors.purple.withValues(alpha: 0.15)
+                          : Colors.teal.withValues(alpha: 0.15),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Disturbance: ΔP_L1 = ${deltaPL_MW.toStringAsFixed(1)} MW   ·   System Base: S_base = ${sBase.toStringAsFixed(0)} MVA   ·   Nominal: f_0 = ${f0.toStringAsFixed(0)} Hz',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // SECTION A: Multi-Generator Droop Sharing
+        _buildSectionHeader('Part A: Parallel Governor Droop Sharing (EE4530 Ex 2.3 & Tut 4 Q1)'),
+        const SizedBox(height: 10),
+
+        // STEP 1: Convert Droops to System Base
+        _buildLfcStepCard(
+          stepNumber: 1,
+          title: 'Convert Speed Droop Regulation Constants to Common System Base',
+          objective: 'Ensure all governor droops R_i are on the common system MVA base (S_base = ${sBase.toStringAsFixed(0)} MVA).',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _lfcFormulaBox(
+                r'R_{i,sys} = R_{i,given} \times \left( \frac{S_{base}}{S_{ni}} \right)',
+              ),
+              const SizedBox(height: 10),
+              for (var i = 0; i < area1.generators.length; i++) ...[
+                final g = area1.generators[i];
+                final rSys = g.droopOnSystemBase(sBase);
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.black26 : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Text('${g.name}: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      Expanded(
+                        child: Text(
+                          'R_${i + 1,sys} = ${(g.droopR * 100).toStringAsFixed(1)}% × (${sBase.toStringAsFixed(0)} / ${g.mvaBase.toStringAsFixed(0)}) = ${rSys.toStringAsFixed(4)} pu',
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.blueAccent),
+                        ),
+                      ),
+                      Text(
+                        '1/R = ${(1.0 / rSys).toStringAsFixed(2)} pu/pu',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontFamily: 'monospace'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 2: Compute Area Frequency Response Characteristic beta_sys
+        _buildLfcStepCard(
+          stepNumber: 2,
+          title: 'Calculate System Frequency Response Characteristic (β_sys)',
+          objective: 'Sum the load damping constant D and all governor stiffnesses (1/R_i).',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _lfcFormulaBox(
+                r'\beta_{sys} = D + \sum_{i=1}^{N_g} \frac{1}{R_{i,sys}} \quad (\text{pu/pu or MW/Hz})',
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('• Load damping constant: D = ${area1.dampingD.toStringAsFixed(2)} pu/pu', style: const TextStyle(fontSize: 12)),
+                    const SizedBox(height: 4),
+                    for (var i = 0; i < area1.generators.length; i++) ...[
+                      final g = area1.generators[i];
+                      final rSys = g.droopOnSystemBase(sBase);
+                      Text('• 1 / R_${i + 1,sys} = 1 / ${rSys.toStringAsFixed(4)} = ${(1.0 / rSys).toStringAsFixed(4)} pu/pu', style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                      const SizedBox(height: 2),
+                    ],
+                    const Divider(height: 14),
+                    Text(
+                      'β_sys = ${area1.dampingD.toStringAsFixed(2)} + ${area1.generators.map((g) => (1.0 / g.droopOnSystemBase(sBase)).toStringAsFixed(2)).join(" + ")} = ${betaSys.toStringAsFixed(4)} pu/pu',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'monospace', color: Colors.blueAccent),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 3: Compute Steady-State Frequency Deviation
+        _buildLfcStepCard(
+          stepNumber: 3,
+          title: 'Calculate Steady-State Frequency Deviation (Δf)',
+          objective: 'Apply the static droop governing equation Δf = -ΔP_L / β_sys.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _lfcFormulaBox(
+                r'\Delta f_{pu} = -\frac{\Delta P_{L,pu}}{\beta_{sys}} \implies \Delta f_{\text{Hz}} = \Delta f_{pu} \times f_0',
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '• Step load surge in per-unit:  ΔP_L,pu = ${deltaPL_MW.toStringAsFixed(1)} MW / ${sBase.toStringAsFixed(0)} MVA = ${deltaPL_pu.toStringAsFixed(5)} pu',
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '• Frequency deviation in pu:  Δf_pu = -(${deltaPL_pu.toStringAsFixed(5)}) / ${betaSys.toStringAsFixed(4)} = ${deltaF_pu.toStringAsFixed(6)} pu',
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '• Frequency deviation in Hertz:  Δf_Hz = ${deltaF_pu.toStringAsFixed(6)} × ${f0.toStringAsFixed(0)} = ${deltaF_Hz.toStringAsFixed(4)} Hz',
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace', fontWeight: FontWeight.bold, color: Colors.teal),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '• Final settled grid frequency:  f_final = ${f0.toStringAsFixed(1)} + (${deltaF_Hz.toStringAsFixed(4)}) = ${fFinal.toStringAsFixed(4)} Hz',
+                      style: const TextStyle(fontSize: 13, fontFamily: 'monospace', fontWeight: FontWeight.bold, color: Colors.blueAccent),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 4: Individual Unit Pickups and Participation Factors
+        _buildLfcStepCard(
+          stepNumber: 4,
+          title: 'Calculate Generator Power Pickups & Participation Factors',
+          objective: 'Evaluate individual turbine MW response: ΔP_mi = -Δf / R_i.',
+          theme: theme,
+          isDark: isDark,
+          isHighlighted: true,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _lfcFormulaBox(
+                r'\Delta P_{mi,pu} = -\frac{\Delta f_{pu}}{R_{i,sys}} \quad \text{and} \quad \Delta P_{mi,\text{MW}} = \Delta P_{mi,pu} \times S_{base}',
+              ),
+              const SizedBox(height: 10),
+              if (singleResult != null) ...[
+                for (final g in singleResult.generatorResponses) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(g.generatorName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '+${g.deltaP_MW.toStringAsFixed(2)} MW (${g.deltaP_pu.toStringAsFixed(5)} pu)',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', color: Colors.blueAccent, fontSize: 13),
+                            ),
+                            Text(
+                              'Participation Factor: ${(g.participationFactor * 100).toStringAsFixed(1)}%',
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.black26 : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '• Load Damping Relief: ΔP_D = D · (-Δf) = ${(singleResult.dampingRelief_MW).toStringAsFixed(2)} MW',
+                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '• Power Balance Verification:  Σ ΔP_m (${singleResult.totalGovernorPower_MW.toStringAsFixed(2)}) + ΔP_D (${singleResult.dampingRelief_MW.toStringAsFixed(2)}) = ${deltaPL_MW.toStringAsFixed(2)} MW  ✓',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.green, fontFamily: 'monospace'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // SECTION B: Two-Area Interconnected Grid & ACE
+        _buildSectionHeader('Part B: Two-Area Interconnection & Area Control Error (ACE)'),
+        const SizedBox(height: 10),
+
+        _buildLfcStepCard(
+          stepNumber: 5,
+          title: 'Two-Area Tie-Line Power Flow Deviation & Frequency Formulation',
+          objective: 'Model tie-line active power exchange under load surges in Area 1 and Area 2.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _lfcFormulaBox(
+                r'\Delta P_{tie1} = \frac{\beta_2 \Delta P_{L1} - \beta_1 \Delta P_{L2}}{\beta_1 + \beta_2} \quad \text{and} \quad \Delta f = -\frac{\Delta P_{L1} + \Delta P_{L2}}{\beta_1 + \beta_2}',
+              ),
+              const SizedBox(height: 10),
+              if (twoResult != null) ...[
+                Text('• Area 1 Bias B_1 = β_1 = ${twoResult.b1.toStringAsFixed(2)} pu/pu', style: const TextStyle(fontSize: 12)),
+                Text('• Area 2 Bias B_2 = β_2 = ${twoResult.b2.toStringAsFixed(2)} pu/pu', style: const TextStyle(fontSize: 12)),
+                const SizedBox(height: 4),
+                Text('• Solved Tie-Line Flow Deviation: ΔP_tie1 = ${twoResult.deltaPtie1_MW.toStringAsFixed(2)} MW (${twoResult.deltaPtie1_pu.toStringAsFixed(4)} pu)', style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 13, color: Colors.deepOrange)),
+                Text('• Area Control Error ACE_1 = ΔP_tie1 + B_1·Δf = ${twoResult.ace1_MW.toStringAsFixed(2)} MW', style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 13, color: Colors.indigo)),
+                Text('• Area Control Error ACE_2 = -ΔP_tie1 + B_2·Δf = ${twoResult.ace2_MW.toStringAsFixed(2)} MW', style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 13, color: Colors.teal)),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // SECTION C: Assignment 1 Question 1 Worked Walkthrough
+        _buildSectionHeader('Part C: EE4530 Assignment 1 Question 1 Worked Solution'),
+        const SizedBox(height: 10),
+
+        _buildLfcStepCard(
+          stepNumber: 6,
+          title: 'ACE Inverse Solver (Deriving Δf and ΔP_tie from measured ACE1 & ACE2)',
+          objective: 'Given ACE1 = -0.25 pu, ACE2 = 0.10 pu, B1 = 12.5 pu, B2 = 25.0 pu, solve for Δf and ΔP_tie1.',
+          theme: theme,
+          isDark: isDark,
+          isHighlighted: true,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _lfcFormulaBox(
+                r'\Delta f = \frac{ACE_1 + ACE_2}{B_1 + B_2} \quad \text{and} \quad \Delta P_{tie1} = \frac{B_2 \cdot ACE_1 - B_1 \cdot ACE_2}{B_1 + B_2}',
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('1. Adding equations:  ACE_1 + ACE_2 = (ΔP_tie1 - ΔP_tie1) + (B_1 + B_2)Δf = (B_1 + B_2)Δf', style: TextStyle(fontSize: 12)),
+                    SizedBox(height: 4),
+                    Text('   Δf = (-0.25 + 0.10) / (12.5 + 25.0) = -0.15 / 37.5 = -0.0040 pu', style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueAccent)),
+                    Text('   At 50 Hz: Δf = -0.0040 × 50.0 = -0.2000 Hz', style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueAccent)),
+                    Divider(height: 16),
+                    Text('2. Cross-multiplying:  B_2·ACE_1 - B_1·ACE_2 = (B_1 + B_2)ΔP_tie1', style: TextStyle(fontSize: 12)),
+                    SizedBox(height: 4),
+                    Text('   ΔP_tie1 = [25.0(-0.25) - 12.5(0.10)] / 37.5 = (-6.25 - 1.25) / 37.5 = -7.50 / 37.5 = -0.2000 pu', style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepOrange)),
+                    Divider(height: 16),
+                    Text('3. Verification Check:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    Text('   ACE_1 = -0.2000 + 12.5(-0.0040) = -0.2000 - 0.0500 = -0.2500 pu  ✓', style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.green)),
+                    Text('   ACE_2 = -(-0.2000) + 25.0(-0.0040) = +0.2000 - 0.1000 = +0.1000 pu  ✓', style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.green)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Text(
+      title,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.blueAccent),
+    );
+  }
+
+  Widget _buildLfcStepCard({
+    required int stepNumber,
+    required String title,
+    required String objective,
+    required Widget content,
+    required ThemeData theme,
+    required bool isDark,
+    bool isHighlighted = false,
+  }) {
+    return Card(
+      elevation: isHighlighted ? 2 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: isHighlighted
+            ? const BorderSide(color: Colors.blueAccent, width: 1.5)
+            : BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: isHighlighted ? Colors.blueAccent : theme.colorScheme.primary,
+                  child: Text(
+                    stepNumber.toString(),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: isHighlighted ? Colors.blueAccent : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              objective,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+            ),
+            const Divider(height: 20),
+            content,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _lfcFormulaBox(String tex) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F3A66).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF0F3A66).withValues(alpha: 0.2)),
+      ),
+      child: Center(
+        child: Math.tex(
+          tex,
+          textStyle: const TextStyle(fontSize: 13),
+        ),
+      ),
     );
   }
 }

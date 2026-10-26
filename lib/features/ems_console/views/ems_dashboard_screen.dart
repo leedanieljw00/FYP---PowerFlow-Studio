@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../economic_dispatch/providers/economic_dispatch_provider.dart';
@@ -29,59 +30,105 @@ class EmsDashboardScreen extends ConsumerWidget {
       dispatchedMap.addAll(edState.lossResult!.powers);
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const Icon(Icons.analytics_outlined, color: Colors.tealAccent),
-            const SizedBox(width: 10),
-            Text(
-              'EMS / SCADA Dispatch Console',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Row(
+            children: [
+              const Icon(Icons.analytics_outlined, color: Colors.tealAccent),
+              const SizedBox(width: 10),
+              Text(
+                'EMS / SCADA Dispatch Console',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              margin: const EdgeInsets.only(right: 16),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.greenAccent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'TELEMETRY LIVE',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                  ),
+                ],
               ),
             ),
           ],
-        ),
-        actions: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            margin: const EdgeInsets.only(right: 16),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.greenAccent,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'TELEMETRY LIVE',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.8),
-                ),
-              ],
-            ),
+          bottom: const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.analytics_outlined), text: 'SCADA Telemetry'),
+              Tab(icon: Icon(Icons.school_outlined), text: 'Exam Step-by-Step'),
+            ],
           ),
-        ],
+        ),
+        body: TabBarView(
+          children: [
+            _buildTelemetryDashboard(
+              context,
+              ref,
+              emsState,
+              emsNotifier,
+              edState,
+              lfcState,
+              dispatchedMap,
+              theme,
+              isDark,
+            ),
+            _buildEmsExamStepByStep(
+              context,
+              emsState,
+              lfcState,
+              edState,
+              theme,
+              isDark,
+            ),
+          ],
+        ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // 1. System Summary Metric Ribbon
-          _buildMetricRibbon(emsState, theme, isDark),
+    );
+  }
 
-          const SizedBox(height: 16),
+  Widget _buildTelemetryDashboard(
+    BuildContext context,
+    WidgetRef ref,
+    EmsConsoleState emsState,
+    EmsConsoleNotifier emsNotifier,
+    EconomicDispatchState edState,
+    LfcState lfcState,
+    Map<String, double> dispatchedMap,
+    ThemeData theme,
+    bool isDark,
+  ) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // 1. System Summary Metric Ribbon
+        _buildMetricRibbon(emsState, theme, isDark),
 
-          // 2. Area Control Error (ACE) Gauge Card
-          _buildAceGaugeCard(emsState, emsNotifier, lfcState, theme, isDark),
+        const SizedBox(height: 16),
+
+        // 2. Area Control Error (ACE) Gauge Card
+        _buildAceGaugeCard(emsState, emsNotifier, lfcState, theme, isDark),
 
           const SizedBox(height: 16),
 
@@ -215,8 +262,7 @@ class EmsDashboardScreen extends ConsumerWidget {
 
           const SizedBox(height: 24),
         ],
-      ),
-    );
+      );
   }
 
   /// System Summary Metric Ribbon displaying core transmission grid state
@@ -692,6 +738,405 @@ class EmsDashboardScreen extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tab 2: Examination Step-by-Step Hand Calculation Walkthrough for EMS
+  // ---------------------------------------------------------------------------
+  Widget _buildEmsExamStepByStep(
+    BuildContext context,
+    EmsConsoleState emsState,
+    LfcState lfcState,
+    EconomicDispatchState edState,
+    ThemeData theme,
+    bool isDark,
+  ) {
+    final area1 = lfcState.area1;
+    final f0 = area1.nominalFreq;
+    final bSys = area1.effectiveB;
+    final sBase = area1.systemMvaBase;
+    final deltaPL_MW = lfcState.deltaPL1_MW;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Exam Scenario Banner
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.school, color: Colors.blueAccent, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'EE4530 Examination Working: EMS & SCADA Operations',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          Text(
+                            'Analytical steps for Area Control Error (ACE), AGC dispatch, and real-time power balance',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Grid Base: S_base = ${sBase.toStringAsFixed(0)} MVA   ·   Frequency: f_0 = ${f0.toStringAsFixed(0)} Hz   ·   Area Bias: B = ${bSys.toStringAsFixed(2)} pu/pu',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 1: Area Control Error (ACE) Formulation
+        _buildEmsStepCard(
+          stepNumber: 1,
+          title: 'Area Control Error (ACE) Formulation & Frequency Bias Setting',
+          objective: 'Define the net interchange error and determine the frequency bias factor B.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _emsFormulaBox(
+                r'ACE = \Delta P_{tie} + B \cdot \Delta f \quad (\text{MW})',
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                '• Physical Meaning: ACE represents the instantaneous MW shortfall or surplus in the control area that must be adjusted by secondary control to maintain tie-line schedules and nominal grid frequency.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                '• Frequency Bias Setting (B): B is chosen to match the natural area frequency response characteristic (B = β = D + Σ(1/R)). This ensures that for external disturbances in neighboring areas, the local ACE remains zero, preventing counter-productive secondary regulation.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('• Tie-Line Interchange Error:  ΔP_tie = ${emsState.deltaPtieMW.toStringAsFixed(2)} MW', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Text('• Frequency Bias Contribution:  B · Δf = ${emsState.freqBiasMW.toStringAsFixed(2)} MW (Δf = ${emsState.deltaFreqHz.toStringAsFixed(4)} Hz)', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                    const Divider(height: 14),
+                    Text(
+                      'ACE = ${emsState.deltaPtieMW.toStringAsFixed(2)} + (${emsState.freqBiasMW.toStringAsFixed(2)}) = ${emsState.aceMW.toStringAsFixed(2)} MW',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'monospace', color: Colors.blueAccent),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 2: Regulation Deadbands & Severity Classification
+        _buildEmsStepCard(
+          stepNumber: 2,
+          title: 'ACE Operational Severity Deadbands Classification',
+          objective: 'Classify the severity of the Area Control Error according to control room operational standards.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.black26 : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('1. Normal Operations: |ACE| ≤ 5.0 MW', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.green)),
+                    Text('   System within regulation deadband; normal governor action suffices.', style: TextStyle(fontSize: 11)),
+                    SizedBox(height: 6),
+                    Text('2. Advisory / Warning: 5.0 MW < |ACE| ≤ 20.0 MW', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.orange)),
+                    Text('   Area control error exceeds deadband; AGC secondary dispatch is triggered.', style: TextStyle(fontSize: 11)),
+                    SizedBox(height: 6),
+                    Text('3. Emergency Alert: |ACE| > 20.0 MW', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.redAccent)),
+                    Text('   Urgent spinning reserve dispatch required to avoid under-frequency load shedding.', style: TextStyle(fontSize: 11)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Text('Current Operating Status: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (lfcState.enableAGC || emsState.aceSeverity == AceSeverity.normal)
+                          ? Colors.green.withValues(alpha: 0.15)
+                          : (emsState.aceSeverity == AceSeverity.warning
+                              ? Colors.orange.withValues(alpha: 0.15)
+                              : Colors.red.withValues(alpha: 0.15)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      lfcState.enableAGC
+                          ? 'NORMAL OPERATIONS (AGC REGULATING)'
+                          : emsState.aceSeverity.title.toUpperCase(),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                        color: (lfcState.enableAGC || emsState.aceSeverity == AceSeverity.normal)
+                            ? Colors.green
+                            : (emsState.aceSeverity == AceSeverity.warning ? Colors.orange : Colors.redAccent),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 3: Secondary AGC Command Allocation
+        _buildEmsStepCard(
+          stepNumber: 3,
+          title: 'Secondary AGC Integral Control & Generator Command Allocation',
+          objective: 'Formulate the secondary integral regulation loop and unit command distribution.',
+          theme: theme,
+          isDark: isDark,
+          isHighlighted: true,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _emsFormulaBox(
+                r'\Delta P_{ref}(t) = -K_I \int_0^t ACE(\tau) \, d\tau \quad \text{and} \quad \Delta P_{ref,i} = \alpha_i \cdot \Delta P_{ref}',
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                '• Exam Distinction (Primary vs Secondary):',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '  - Primary Droop: Proportional control only. Leaves a permanent steady-state frequency error: Δf_ss = -ΔP_L / β_sys.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const Text(
+                '  - Secondary AGC: Integral control law. Continues adjusting reference power ΔP_ref until the integral of ACE reaches zero, ensuring lim_{t→∞} Δf(t) = 0 and lim_{t→∞} ACE(t) = 0.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '• Integral Gain: K_I = ${area1.integralGainKi.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '• Uncompensated Load Surge: ΔP_L = ${deltaPL_MW.toStringAsFixed(1)} MW',
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      lfcState.enableAGC
+                          ? '• Current AGC State: ACTIVE → Secondary integral action has compensated generation to drive ACE to 0.00 MW and f to 50.000 Hz.'
+                          : '• Current AGC State: INACTIVE → Uncompensated primary droop leaves steady-state error Δf = ${emsState.deltaFreqHz.toStringAsFixed(4)} Hz and ACE = ${emsState.aceMW.toStringAsFixed(2)} MW.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: lfcState.enableAGC ? Colors.green : Colors.deepOrangeAccent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 4: Real-Time Energy Balance & System Marginal Cost
+        _buildEmsStepCard(
+          stepNumber: 4,
+          title: 'Transmission Energy Balance & System Marginal Clearing Cost (λ)',
+          objective: 'Balance total grid generation, load demand, and transmission losses.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _emsFormulaBox(
+                r'\sum_{i=1}^{N_g} P_{Gi} = \sum_{j=1}^{N_l} P_{Lj} + P_{losses} \quad \text{and} \quad \lambda = \text{ICR}_i(P_i)',
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total Grid Generation (Σ P_G):', style: TextStyle(fontSize: 12)),
+                        Text('${emsState.totalGenMW.toStringAsFixed(2)} MW + j${emsState.totalGenMvar.toStringAsFixed(2)} MVAR', style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total Load Demand (Σ P_L):', style: TextStyle(fontSize: 12)),
+                        Text('${emsState.totalLoadMW.toStringAsFixed(2)} MW + j${emsState.totalLoadMvar.toStringAsFixed(2)} MVAR', style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Transmission Losses (P_loss):', style: TextStyle(fontSize: 12)),
+                        Text('${emsState.totalLossMW.toStringAsFixed(2)} MW + j${emsState.totalLossMvar.toStringAsFixed(2)} MVAR', style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12, color: Colors.redAccent)),
+                      ],
+                    ),
+                    const Divider(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('System Marginal Cost (λ):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        Text(
+                          '${emsState.systemLambda.toStringAsFixed(4)} \$/MWh',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'monospace', color: Colors.blueAccent),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildEmsStepCard({
+    required int stepNumber,
+    required String title,
+    required String objective,
+    required Widget content,
+    required ThemeData theme,
+    required bool isDark,
+    bool isHighlighted = false,
+  }) {
+    return Card(
+      elevation: isHighlighted ? 2 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: isHighlighted
+            ? const BorderSide(color: Colors.blueAccent, width: 1.5)
+            : BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: isHighlighted ? Colors.blueAccent : theme.colorScheme.primary,
+                  child: Text(
+                    stepNumber.toString(),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: isHighlighted ? Colors.blueAccent : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              objective,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+            ),
+            const Divider(height: 20),
+            content,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _emsFormulaBox(String tex) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F3A66).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF0F3A66).withValues(alpha: 0.2)),
+      ),
+      child: Center(
+        child: Math.tex(
+          tex,
+          textStyle: const TextStyle(fontSize: 13),
+        ),
+      ),
     );
   }
 }

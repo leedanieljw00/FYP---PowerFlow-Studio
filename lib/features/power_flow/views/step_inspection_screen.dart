@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/math/complex.dart';
@@ -22,7 +23,7 @@ class _StepInspectionScreenState extends ConsumerState<StepInspectionScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -102,6 +103,7 @@ class _StepInspectionScreenState extends ConsumerState<StepInspectionScreen>
             Tab(icon: Icon(Icons.grid_on), text: 'Y_bus Matrix'),
             Tab(icon: Icon(Icons.timeline), text: 'Iteration Steps'),
             Tab(icon: Icon(Icons.table_chart), text: 'Final Summary'),
+            Tab(icon: Icon(Icons.school_outlined), text: 'Exam Step-by-Step'),
           ],
         ),
       ),
@@ -111,6 +113,7 @@ class _StepInspectionScreenState extends ConsumerState<StepInspectionScreen>
           _buildYbusView(context, ybus, isDark),
           _buildIterationsView(context, result, isDark),
           _buildSummaryView(context, result, isDark),
+          _buildExamHandCalculationsView(context, state, result, ybus, isDark),
         ],
       ),
     );
@@ -818,6 +821,482 @@ class _StepInspectionScreenState extends ConsumerState<StepInspectionScreen>
           Text(line1, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
           Text(line2, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
         ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 4. Examination Step-by-Step Hand Calculation Walkthrough
+  // ---------------------------------------------------------------------------
+  Widget _buildExamHandCalculationsView(
+    BuildContext context,
+    PowerFlowState state,
+    PowerFlowResult? result,
+    ComplexMatrix? ybus,
+    bool isDark,
+  ) {
+    final theme = Theme.of(context);
+    final isNR = state.selectedMethod == PowerFlowMethod.newtonRaphson;
+    final buses = state.buses;
+    final lines = state.lines;
+
+    // First iteration data
+    final firstIter = result != null && result.iterations.isNotEmpty
+        ? result.iterations.first
+        : null;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Exam Scenario Banner
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.school, color: Colors.blueAccent, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isNR
+                                ? 'EE4530 Exam Working: Newton-Raphson Power Flow'
+                                : 'EE4530 Exam Working: Gauss-Seidel Power Flow',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          Text(
+                            isNR
+                                ? 'Full hand-calculation walkthrough: polar mismatches, Jacobian partials, and state updates'
+                                : 'Full hand-calculation walkthrough: Y_bus elements, voltage iteration substitutions, and Q-limits',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Chip(
+                      label: Text(
+                        isNR ? 'NEWTON-RAPHSON' : 'GAUSS-SEIDEL',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                      backgroundColor: isNR
+                          ? Colors.purple.withValues(alpha: 0.15)
+                          : Colors.teal.withValues(alpha: 0.15),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Network: ${buses.length} Buses   ·   ${lines.length} Branches   ·   Tolerance: ε = ${fmtSci(state.options.tolerance, 1)}',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 1: Bus Admittance Matrix Formulation
+        _buildPfStepCard(
+          stepNumber: 1,
+          title: 'Formulation of Bus Admittance Matrix (Y_bus)',
+          objective: 'Calculate series branch admittances y_ij = 1 / (R + jX) and assemble self and mutual admittances.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _pfFormulaBox(
+                r'y_{ij} = \frac{1}{R_{ij} + jX_{ij}}, \quad Y_{ij} = -\frac{y_{ij}}{a_{ij}}, \quad Y_{ii} = y_{shunt,i} + \sum_{k \neq i} \left( \frac{y_{ik}}{a_{ik}^2} + j\frac{B_{ik}}{2} \right)',
+              ),
+              const SizedBox(height: 10),
+              for (final line in lines) ...[
+                Builder(
+                  builder: (context) {
+                    final z = Complex(line.r, line.x);
+                    final y = z.reciprocal();
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.black26 : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Text('Line ${line.fromBus}-${line.toBus}: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          Expanded(
+                            child: Text(
+                              'Z = ${line.r.toStringAsFixed(4)} + j${line.x.toStringAsFixed(4)}  →  y = ${y.toCartesianString(4)}',
+                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.blueAccent),
+                            ),
+                          ),
+                          if (line.bHalf > 0)
+                            Text('B/2 = j${line.bHalf.toStringAsFixed(4)}', style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontFamily: 'monospace')),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 2: Bus Classification & Net Injections
+        _buildPfStepCard(
+          stepNumber: 2,
+          title: 'Bus Classification & Net Scheduled Power Injections',
+          objective: 'Identify Slack, PV, and PQ buses and establish initial flat start estimates.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _pfFormulaBox(
+                r'P_i^{net} = P_{Gi} - P_{Li}, \quad Q_i^{net} = Q_{Gi} - Q_{Li}, \quad \text{Flat start: } V_i^{(0)} = 1.0 \angle 0^\circ',
+              ),
+              const SizedBox(height: 10),
+              for (final b in buses) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: b.type == BusType.slack
+                              ? Colors.purple.withValues(alpha: 0.2)
+                              : (b.type == BusType.pv ? Colors.amber.withValues(alpha: 0.2) : Colors.cyan.withValues(alpha: 0.2)),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          b.type.name.toUpperCase(),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('Bus ${b.busNumber} (${b.name}): ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      Expanded(
+                        child: Text(
+                          b.type == BusType.slack
+                              ? 'V_1 = ${b.vMag.toStringAsFixed(3)} ∠ 0.0° (Reference)'
+                              : (b.type == BusType.pv
+                                  ? '|V| = ${b.vMag.toStringAsFixed(3)}, P = ${(b.pGen - b.pLoad).toStringAsFixed(2)} pu, Q ∈ [${b.qMin.toStringAsFixed(2)}, ${b.qMax.toStringAsFixed(2)}]'
+                                  : 'P = ${(b.pGen - b.pLoad).toStringAsFixed(2)} pu, Q = ${(b.qGen - b.qLoad).toStringAsFixed(2)} pu, V^(0) = 1.0∠0°'),
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // STEP 3: First Iteration Calculation Walkthrough
+        if (isNR) ...[
+          // Newton-Raphson Walkthrough
+          _buildPfStepCard(
+            stepNumber: 3,
+            title: 'Newton-Raphson: 1st Iteration Power Mismatches & Jacobian Partials',
+            objective: 'Compute active/reactive power mismatches and construct the Jacobian matrix blocks J_1 ... J_4.',
+            theme: theme,
+            isDark: isDark,
+            isHighlighted: true,
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _pfFormulaBox(
+                  r'\Delta P_i = P_i^{spec} - P_i^{calc}, \quad \Delta Q_i = Q_i^{spec} - Q_i^{calc}, \quad \begin{bmatrix} \Delta P \\ \Delta Q \end{bmatrix} = \begin{bmatrix} J_1 & J_2 \\ J_3 & J_4 \end{bmatrix} \begin{bmatrix} \Delta \theta \\ \Delta |V|/|V| \end{bmatrix}',
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '• Analytical Partial Derivatives for Jacobian Sub-matrices:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '  J_1(i, j) = ∂P_i/∂θ_j = -|V_i||V_j||Y_{ij}| sin(θ_i - θ_j - δ_{ij})\n'
+                  '  J_1(i, i) = ∂P_i/∂θ_i = -Q_i - |V_i|^2 B_{ii}\n'
+                  '  J_2(i, j) = |V_j| ∂P_i/∂|V_j| = |V_i||V_j||Y_{ij}| cos(θ_i - θ_j - δ_{ij})\n'
+                  '  J_2(i, i) = |V_i| ∂P_i/∂|V_i| = P_i + |V_i|^2 G_{ii}\n'
+                  '  J_3(i, j) = ∂Q_i/∂θ_j = -J_2(i, j)\n'
+                  '  J_4(i, j) = |V_j| ∂Q_i/∂|V_j| = J_1(i, j)',
+                  style: TextStyle(fontFamily: 'monospace', fontSize: 11),
+                ),
+                const SizedBox(height: 12),
+                if (firstIter != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('1st Iteration (k = 0) Computed Mismatches:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        const SizedBox(height: 6),
+                        for (final m in firstIter.mismatches)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Text(
+                              '• Bus ${m.busNumber}: ΔP = ${fmtSci(m.deltaP, 4)} pu   ·   ΔQ = ${fmtSci(m.deltaQ, 4)} pu',
+                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                            ),
+                          ),
+                        const Divider(height: 14),
+                        Text(
+                          'Max Power Mismatch: ||ΔP, ΔQ||_∞ = ${fmtSci(firstIter.maxMismatch, 4)} pu',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueAccent),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ] else ...[
+          // Gauss-Seidel Walkthrough
+          _buildPfStepCard(
+            stepNumber: 3,
+            title: 'Gauss-Seidel: 1st Iteration Hand Calculation Walkthrough',
+            objective: 'Substitute voltages into the Gauss-Seidel update equation V_i^(k+1) for Bus 2 and Bus 3.',
+            theme: theme,
+            isDark: isDark,
+            isHighlighted: true,
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _pfFormulaBox(
+                  r'V_i^{(k+1)} = \frac{1}{Y_{ii}} \left[ \frac{P_i - jQ_i}{(V_i^{(k)})^*} - \sum_{j < i} Y_{ij} V_j^{(k+1)} - \sum_{j > i} Y_{ij} V_j^{(k)} \right]',
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '• Step-by-Step Numerical Substitution (Tutorial 1 Question 4):',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '1. Update Bus 2 (using initial flat start V_1, V_2^(0), V_3^(0)):',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        '   V_2^(1) = (1 / Y_22) · [ (P_2 - jQ_2) / (V_2^(0))* - Y_21·V_1 - Y_23·V_3^(0) ]',
+                        style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.blueAccent),
+                      ),
+                      const Divider(height: 14),
+                      const Text(
+                        '2. Update Bus 3 (substituting the newly calculated V_2^(1) immediately):',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        '   V_3^(1) = (1 / Y_33) · [ (P_3 - jQ_3) / (V_3^(0))* - Y_31·V_1 - Y_32·V_2^(1) ]',
+                        style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.blueAccent),
+                      ),
+                      const Divider(height: 14),
+                      const Text(
+                        '3. Acceleration Factor (if α > 1.0):',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        '   V_i,acc^(1) = V_i^(0) + α · (V_i^(1) - V_i^(0))',
+                        style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 16),
+
+        // STEP 4: Convergence & Final Network Totals
+        _buildPfStepCard(
+          stepNumber: 4,
+          title: 'Slack Bus Power Generation & Line Loss Balance',
+          objective: 'Evaluate slack bus injection S_1 = V_1 · I_1* and compute transmission line losses.',
+          theme: theme,
+          isDark: isDark,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _pfFormulaBox(
+                r'S_1 = V_1 \left( \sum_{j=1}^n Y_{1j} V_j \right)^*, \quad P_{loss,ij} = \text{Re}\{S_{ij} + S_{ji}\}',
+              ),
+              const SizedBox(height: 10),
+              if (result != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total Grid Generation:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text(
+                            '${(result.totalGeneration.re * 100).toStringAsFixed(2)} MW + j${(result.totalGeneration.im * 100).toStringAsFixed(2)} MVAR',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12, color: Colors.green),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total System Load:', style: TextStyle(fontSize: 12)),
+                          Text(
+                            '${(result.totalLoad.re * 100).toStringAsFixed(2)} MW + j${(result.totalLoad.im * 100).toStringAsFixed(2)} MVAR',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total Transmission Losses:', style: TextStyle(fontSize: 12)),
+                          Text(
+                            '${(result.totalLoss.re * 100).toStringAsFixed(3)} MW + j${(result.totalLoss.im * 100).toStringAsFixed(3)} MVAR',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12, color: Colors.redAccent),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildPfStepCard({
+    required int stepNumber,
+    required String title,
+    required String objective,
+    required Widget content,
+    required ThemeData theme,
+    required bool isDark,
+    bool isHighlighted = false,
+  }) {
+    return Card(
+      elevation: isHighlighted ? 2 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: isHighlighted
+            ? const BorderSide(color: Colors.blueAccent, width: 1.5)
+            : BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: isHighlighted ? Colors.blueAccent : theme.colorScheme.primary,
+                  child: Text(
+                    stepNumber.toString(),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: isHighlighted ? Colors.blueAccent : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              objective,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+            ),
+            const Divider(height: 20),
+            content,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pfFormulaBox(String tex) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F3A66).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF0F3A66).withValues(alpha: 0.2)),
+      ),
+      child: Center(
+        child: Math.tex(
+          tex,
+          textStyle: const TextStyle(fontSize: 13),
+        ),
       ),
     );
   }
