@@ -354,6 +354,36 @@ void main() {
         expect(emsState.aceSeverity, equals(AceSeverity.emergency));
       }
     });
+
+    test('EmsConsoleProvider updates ACE dynamically with load disturbance and AGC toggle', () {
+      final container = ProviderContainer();
+      final notifier = container.read(emsConsoleProvider.notifier);
+
+      // 1. Initial droop state with 90 MW disturbance
+      var state = container.read(emsConsoleProvider);
+      expect(state.aceMW, closeTo(-90.0, 1e-2));
+      expect(state.aceSeverity, equals(AceSeverity.emergency));
+
+      // 2. Adjust load disturbance to 15 MW (warning range)
+      notifier.setLoadDisturbance(15.0);
+      state = container.read(emsConsoleProvider);
+      expect(state.aceMW, closeTo(-15.0, 1e-2));
+      expect(state.aceSeverity, equals(AceSeverity.warning));
+
+      // 3. Adjust load disturbance to 0 MW (balanced normal range)
+      notifier.setLoadDisturbance(0.0);
+      state = container.read(emsConsoleProvider);
+      expect(state.aceMW, closeTo(0.0, 1e-2));
+      expect(state.aceSeverity, equals(AceSeverity.normal));
+
+      // 4. Reset to 90 MW and engage secondary AGC -> ACE cleared to 0
+      notifier.setLoadDisturbance(90.0);
+      notifier.toggleAgc(true);
+      state = container.read(emsConsoleProvider);
+      expect(state.aceMW, closeTo(0.0, 1e-2));
+      expect(state.gridFrequencyHz, closeTo(50.0, 1e-3));
+      expect(state.aceSeverity, equals(AceSeverity.normal));
+    });
   });
 
   group('Phase 3 Widgets Rendering', () {

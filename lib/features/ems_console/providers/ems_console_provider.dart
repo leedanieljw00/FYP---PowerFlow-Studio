@@ -134,7 +134,13 @@ class EmsConsoleNotifier extends Notifier<EmsConsoleState> {
     double tie_MW = 0.0;
     double bias_MW = 0.0;
 
-    if (lfcState.isTwoAreaMode && lfcState.twoAreaResult != null) {
+    if (lfcState.enableAGC) {
+      // Secondary AGC integral control restores steady-state frequency to nominal (50.0 Hz) and clears ACE to 0 MW
+      deltaF_Hz = 0.0;
+      ace_MW = 0.0;
+      tie_MW = 0.0;
+      bias_MW = 0.0;
+    } else if (lfcState.isTwoAreaMode && lfcState.twoAreaResult != null) {
       final res = lfcState.twoAreaResult!;
       deltaF_Hz = res.deltaF_Hz;
       ace_MW = res.ace1_MW;
@@ -196,6 +202,15 @@ class EmsConsoleNotifier extends Notifier<EmsConsoleState> {
 
   void updateDynamicParams(DynamicLfcParams params) {
     state = state.copyWith(dynamicParams: params);
+    ref.read(lfcProvider.notifier).setLoadSurgeArea1(params.stepLoadDeltaPL_MW);
+  }
+
+  void setLoadDisturbance(double mw) {
+    ref.read(lfcProvider.notifier).setLoadSurgeArea1(mw);
+  }
+
+  void toggleAgc(bool enable) {
+    ref.read(lfcProvider.notifier).setEnableAGC(enable);
   }
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../economic_dispatch/providers/economic_dispatch_provider.dart';
+import '../../load_frequency_control/providers/lfc_provider.dart';
 import '../providers/ems_console_provider.dart';
 import 'widgets/frequency_transient_chart.dart';
 import 'widgets/lambda_curve_chart.dart';
@@ -18,6 +19,7 @@ class EmsDashboardScreen extends ConsumerWidget {
     final emsState = ref.watch(emsConsoleProvider);
     final emsNotifier = ref.read(emsConsoleProvider.notifier);
     final edState = ref.watch(economicDispatchProvider);
+    final lfcState = ref.watch(lfcProvider);
 
     // Build map of dispatched generator powers
     final dispatchedMap = <String, double>{};
@@ -79,7 +81,7 @@ class EmsDashboardScreen extends ConsumerWidget {
           const SizedBox(height: 16),
 
           // 2. Area Control Error (ACE) Gauge Card
-          _buildAceGaugeCard(emsState, theme, isDark),
+          _buildAceGaugeCard(emsState, emsNotifier, lfcState, theme, isDark),
 
           const SizedBox(height: 16),
 
@@ -365,8 +367,14 @@ class EmsDashboardScreen extends ConsumerWidget {
     );
   }
 
-  /// Area Control Error (ACE) Gauge with color-coded threshold zones
-  Widget _buildAceGaugeCard(EmsConsoleState state, ThemeData theme, bool isDark) {
+  /// Area Control Error (ACE) Gauge with color-coded threshold zones and interactive controls
+  Widget _buildAceGaugeCard(
+    EmsConsoleState state,
+    EmsConsoleNotifier emsNotifier,
+    LfcState lfcState,
+    ThemeData theme,
+    bool isDark,
+  ) {
     final severityColor = switch (state.aceSeverity) {
       AceSeverity.normal => const Color(0xFF10B981),
       AceSeverity.warning => const Color(0xFFF59E0B),
@@ -404,7 +412,9 @@ class EmsDashboardScreen extends ConsumerWidget {
                     border: Border.all(color: severityColor.withValues(alpha: 0.5)),
                   ),
                   child: Text(
-                    state.aceSeverity.title.toUpperCase(),
+                    lfcState.enableAGC
+                        ? 'AGC BALANCED'
+                        : state.aceSeverity.title.toUpperCase(),
                     style: TextStyle(
                       color: severityColor,
                       fontSize: 10,
@@ -461,27 +471,132 @@ class EmsDashboardScreen extends ConsumerWidget {
 
             const SizedBox(height: 16),
 
-            // Visual Gauge Bar
+            // Visual Gauge Bar (scaled across -100 to +100 MW)
             _buildAceVisualBar(state.aceMW, isDark),
 
             const SizedBox(height: 8),
 
-            // Gauge scale legend (-30 MW ... 0 ... +30 MW)
+            // Gauge scale legend (-100 MW ... 0 ... +100 MW)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('-30 MW', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                Text('-100 MW', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
                 Text('-20 MW [WARN]', style: TextStyle(fontSize: 10, color: Colors.amber.shade700)),
                 Text('-5 MW', style: TextStyle(fontSize: 10, color: Colors.green.shade600)),
                 const Text('0 MW (BALANCED)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                 Text('+5 MW', style: TextStyle(fontSize: 10, color: Colors.green.shade600)),
                 Text('+20 MW [WARN]', style: TextStyle(fontSize: 10, color: Colors.amber.shade700)),
-                Text('+30 MW', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                Text('+100 MW', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+              ],
+            ),
+
+            const Divider(height: 24),
+
+            // Interactive Controls: Secondary AGC Switch
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        lfcState.enableAGC ? Icons.check_circle : Icons.power_settings_new,
+                        size: 20,
+                        color: lfcState.enableAGC ? Colors.green : Colors.grey,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Secondary AGC Automatic Regulation',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            Text(
+                              lfcState.enableAGC
+                                  ? 'AGC integral control actively eliminates ACE (Δf → 0, ACE → 0 MW)'
+                                  : 'Primary Droop Only: uncompensated frequency error and non-zero ACE',
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: lfcState.enableAGC,
+                  activeColor: Colors.green,
+                  onChanged: (val) => emsNotifier.toggleAgc(val),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Disturbance Slider
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Grid Active Load Surge (ΔP_L): ${lfcState.deltaPL1_MW.toStringAsFixed(0)} MW',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                Text(
+                  lfcState.enableAGC
+                      ? 'Compensated by AGC'
+                      : 'ACE = -ΔP_L = -${lfcState.deltaPL1_MW.toStringAsFixed(0)} MW',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                    color: lfcState.enableAGC ? Colors.green : severityColor,
+                  ),
+                ),
+              ],
+            ),
+            Slider(
+              value: lfcState.deltaPL1_MW.clamp(0.0, 150.0),
+              min: 0.0,
+              max: 150.0,
+              divisions: 30,
+              label: '${lfcState.deltaPL1_MW.toStringAsFixed(0)} MW',
+              onChanged: (val) => emsNotifier.setLoadDisturbance(val),
+            ),
+
+            // Quick Scenario Chips
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _scenarioChip('0 MW (Balanced)', 0.0, lfcState.deltaPL1_MW, emsNotifier),
+                _scenarioChip('15 MW (Advisory)', 15.0, lfcState.deltaPL1_MW, emsNotifier),
+                _scenarioChip('50 MW (Emergency)', 50.0, lfcState.deltaPL1_MW, emsNotifier),
+                _scenarioChip('90 MW (Benchmark)', 90.0, lfcState.deltaPL1_MW, emsNotifier),
               ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _scenarioChip(
+    String label,
+    double mw,
+    double currentMw,
+    EmsConsoleNotifier notifier,
+  ) {
+    final isSelected = (currentMw - mw).abs() < 1e-2;
+    return ActionChip(
+      label: Text(label),
+      labelStyle: TextStyle(
+        fontSize: 11,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+      backgroundColor: isSelected ? Colors.blue.withValues(alpha: 0.2) : null,
+      onPressed: () => notifier.setLoadDisturbance(mw),
     );
   }
 
@@ -512,9 +627,9 @@ class EmsDashboardScreen extends ConsumerWidget {
 
   /// Segmented visual gauge bar with indicator pointer
   Widget _buildAceVisualBar(double aceMW, bool isDark) {
-    // Range is -30 MW to +30 MW (normalized 0.0 to 1.0)
-    const minVal = -30.0;
-    const maxVal = 30.0;
+    // Range is -100 MW to +100 MW (normalized 0.0 to 1.0)
+    const minVal = -100.0;
+    const maxVal = 100.0;
     final normalized = ((aceMW - minVal) / (maxVal - minVal)).clamp(0.0, 1.0);
 
     return LayoutBuilder(
@@ -525,23 +640,23 @@ class EmsDashboardScreen extends ConsumerWidget {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            // Colored zone background bar
+            // Colored zone background bar (200 MW total flex)
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: SizedBox(
                 height: 16,
                 child: Row(
                   children: [
-                    // Emergency left (-30 to -20 MW) -> 10/60
-                    Expanded(flex: 10, child: Container(color: Colors.red.shade400)),
-                    // Warning left (-20 to -5 MW) -> 15/60
+                    // Emergency left (-100 to -20 MW) -> 80/200
+                    Expanded(flex: 80, child: Container(color: Colors.red.shade400)),
+                    // Warning left (-20 to -5 MW) -> 15/200
                     Expanded(flex: 15, child: Container(color: Colors.amber.shade400)),
-                    // Normal center (-5 to +5 MW) -> 10/60
+                    // Normal center (-5 to +5 MW) -> 10/200
                     Expanded(flex: 10, child: Container(color: Colors.green.shade500)),
-                    // Warning right (+5 to +20 MW) -> 15/60
+                    // Warning right (+5 to +20 MW) -> 15/200
                     Expanded(flex: 15, child: Container(color: Colors.amber.shade400)),
-                    // Emergency right (+20 to +30 MW) -> 10/60
-                    Expanded(flex: 10, child: Container(color: Colors.red.shade400)),
+                    // Emergency right (+20 to +100 MW) -> 80/200
+                    Expanded(flex: 80, child: Container(color: Colors.red.shade400)),
                   ],
                 ),
               ),
