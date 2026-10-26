@@ -137,7 +137,7 @@ class PowerFlowNotifier extends Notifier<PowerFlowState> {
       ),
     ];
 
-    return PowerFlowState(
+    final initialState = PowerFlowState(
       buses: buses,
       lines: lines,
       selectedMethod: PowerFlowMethod.newtonRaphson,
@@ -148,6 +148,24 @@ class PowerFlowNotifier extends Notifier<PowerFlowState> {
         accelerationFactor: 1.0,
       ),
     );
+
+    try {
+      final busMap = <int, int>{for (var i = 0; i < buses.length; i++) buses[i].busNumber: i};
+      final branchParams = lines.map((l) => l.toBranchParams(busMap)).toList();
+      final ybus = YBusBuilder.build(buses.length, branchParams);
+      final pfBuses = buses.map((b) => b.toPfBus()).toList();
+      final result = NewtonRaphsonSolver(options: initialState.options).solve(
+        ybus: ybus,
+        buses: pfBuses,
+        branches: branchParams,
+      );
+      return initialState.copyWith(
+        ybus: () => ybus,
+        result: () => result,
+      );
+    } catch (_) {
+      return initialState;
+    }
   }
 
   /// Preset 2: 2-Bus Generator to Load System (ideal for fundamental hand calculation verification)
