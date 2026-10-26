@@ -929,7 +929,7 @@ class _StepInspectionScreenState extends ConsumerState<StepInspectionScreen>
                 Builder(
                   builder: (context) {
                     final z = Complex(line.r, line.x);
-                    final y = z.reciprocal();
+                    final y = z.reciprocal;
                     return Container(
                       margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1005,7 +1005,7 @@ class _StepInspectionScreenState extends ConsumerState<StepInspectionScreen>
                           b.type == BusType.slack
                               ? 'V_1 = ${b.vMag.toStringAsFixed(3)} ∠ 0.0° (Reference)'
                               : (b.type == BusType.pv
-                                  ? '|V| = ${b.vMag.toStringAsFixed(3)}, P = ${(b.pGen - b.pLoad).toStringAsFixed(2)} pu, Q ∈ [${b.qMin.toStringAsFixed(2)}, ${b.qMax.toStringAsFixed(2)}]'
+                                  ? '|V| = ${b.vMag.toStringAsFixed(3)}, P = ${(b.pGen - b.pLoad).toStringAsFixed(2)} pu, Q ∈ [${b.qMin?.toStringAsFixed(2) ?? "-∞"}, ${b.qMax?.toStringAsFixed(2) ?? "+∞"}]'
                                   : 'P = ${(b.pGen - b.pLoad).toStringAsFixed(2)} pu, Q = ${(b.qGen - b.qLoad).toStringAsFixed(2)} pu, V^(0) = 1.0∠0°'),
                           style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                         ),
@@ -1052,7 +1052,7 @@ class _StepInspectionScreenState extends ConsumerState<StepInspectionScreen>
                   style: TextStyle(fontFamily: 'monospace', fontSize: 11),
                 ),
                 const SizedBox(height: 12),
-                if (firstIter != null) ...[
+                if (firstIter is NrIterationRecord) ...[
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -1065,17 +1065,18 @@ class _StepInspectionScreenState extends ConsumerState<StepInspectionScreen>
                       children: [
                         const Text('1st Iteration (k = 0) Computed Mismatches:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                         const SizedBox(height: 6),
-                        for (final m in firstIter.mismatches)
+                        for (var idx = 0; idx < firstIter.angleBuses.length; idx++)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 2),
                             child: Text(
-                              '• Bus ${m.busNumber}: ΔP = ${fmtSci(m.deltaP, 4)} pu   ·   ΔQ = ${fmtSci(m.deltaQ, 4)} pu',
+                              '• Bus ${firstIter.angleBuses[idx]}: ΔP = ${fmtSci(firstIter.deltaP[idx], 4)} pu'
+                              '${idx < firstIter.deltaQ.length ? '   ·   ΔQ = ${fmtSci(firstIter.deltaQ[idx], 4)} pu' : ''}',
                               style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                             ),
                           ),
                         const Divider(height: 14),
                         Text(
-                          'Max Power Mismatch: ||ΔP, ΔQ||_∞ = ${fmtSci(firstIter.maxMismatch, 4)} pu',
+                          'Max Power Mismatch: ||ΔP, ΔQ||_∞ = ${fmtSci(firstIter.maxError, 4)} pu',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueAccent),
                         ),
                       ],

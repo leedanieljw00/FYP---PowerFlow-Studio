@@ -573,7 +573,7 @@ class EmsDashboardScreen extends ConsumerWidget {
                 ),
                 Switch(
                   value: lfcState.enableAGC,
-                  activeColor: Colors.green,
+                  activeThumbColor: Colors.green,
                   onChanged: (val) => emsNotifier.toggleAgc(val),
                 ),
               ],

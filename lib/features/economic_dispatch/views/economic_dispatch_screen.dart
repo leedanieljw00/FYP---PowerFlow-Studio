@@ -760,7 +760,7 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
       return const Center(child: Text('No active generator units to solve.'));
     }
 
-    final pDemand = state.powerDemand;
+    final pDemand = state.demand;
     final includeLosses = state.includeLosses;
 
     // Intermediate analytical sums
@@ -873,9 +873,10 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
-              for (var i = 0; i < activeUnits.length; i++) ...[
-                final u = activeUnits[i];
-                Container(
+              ...activeUnits.asMap().entries.map((entry) {
+                final i = entry.key;
+                final u = entry.value;
+                return Container(
                   margin: const EdgeInsets.only(bottom: 6),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
@@ -900,8 +901,8 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
                       ),
                     ],
                   ),
-                ),
-              ],
+                );
+              }),
             ],
           ),
         ),
@@ -922,19 +923,20 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
                 r'P_i(\lambda) = \frac{\lambda - \beta_i}{2\gamma_i} = \left(\frac{1}{2\gamma_i}\right)\lambda - \left(\frac{\beta_i}{2\gamma_i}\right)',
               ),
               const SizedBox(height: 10),
-              for (var i = 0; i < activeUnits.length; i++) ...[
-                final u = activeUnits[i];
+              ...activeUnits.asMap().entries.map((entry) {
+                final i = entry.key;
+                final u = entry.value;
                 final twoG = 2.0 * u.gamma;
                 final invTwoG = twoG > 0 ? 1.0 / twoG : 0.0;
                 final betaOverTwoG = twoG > 0 ? u.beta / twoG : 0.0;
-                Padding(
+                return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Text(
                     'P_${i + 1}(λ) = (λ - ${u.beta.toStringAsFixed(3)}) / ${twoG.toStringAsFixed(4)} = ${invTwoG.toStringAsFixed(3)}·λ - ${betaOverTwoG.toStringAsFixed(3)}',
                     style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                   ),
-                ),
-              ],
+                );
+              }),
             ],
           ),
         ),
@@ -1008,15 +1010,16 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
           content: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (var i = 0; i < activeUnits.length; i++) ...[
-                final u = activeUnits[i];
+              ...activeUnits.asMap().entries.map((entry) {
+                final i = entry.key;
+                final u = entry.value;
                 final twoG = 2.0 * u.gamma;
                 final pUnconstrained = twoG > 0 ? (unconstrainedLambda - u.beta) / twoG : 0.0;
                 final isViolatedMin = pUnconstrained < u.pMin;
                 final isViolatedMax = pUnconstrained > u.pMax;
                 final isViolated = isViolatedMin || isViolatedMax;
 
-                Container(
+                return Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
@@ -1060,8 +1063,8 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
                       ),
                     ],
                   ),
-                ),
-              ],
+                );
+              }),
             ],
           ),
         ),
@@ -1100,11 +1103,12 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
                       ],
                     ),
                     const Divider(height: 16),
-                    for (var i = 0; i < activeUnits.length; i++) ...[
-                      final u = activeUnits[i];
+                    ...activeUnits.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final u = entry.value;
                       final pFinal = finalPowers[u.id] ?? 0.0;
                       final unitCost = u.alpha + u.beta * pFinal + u.gamma * pFinal * pFinal;
-                      Padding(
+                      return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1116,8 +1120,8 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
                             ),
                           ],
                         ),
-                      ),
-                    ],
+                      );
+                    }),
                     const Divider(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1158,12 +1162,12 @@ class _EconomicDispatchScreenState extends ConsumerState<EconomicDispatchScreen>
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Total Transmission Losses: P_L = ${(state.lossResult?.loss ?? 0.0).toStringAsFixed(3)} MW',
+                  'Total Transmission Losses: P_L = ${(state.lossResult?.transmissionLoss ?? 0.0).toStringAsFixed(3)} MW',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 13),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Total Generation Required: Σ P_G = ${(pDemand + (state.lossResult?.loss ?? 0.0)).toStringAsFixed(2)} MW',
+                  'Total Generation Required: Σ P_G = ${(pDemand + (state.lossResult?.transmissionLoss ?? 0.0)).toStringAsFixed(2)} MW',
                   style: const TextStyle(fontSize: 12),
                 ),
               ],

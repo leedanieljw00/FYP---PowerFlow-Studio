@@ -828,10 +828,11 @@ class _LfcScreenState extends ConsumerState<LfcScreen>
                 r'R_{i,sys} = R_{i,given} \times \left( \frac{S_{base}}{S_{ni}} \right)',
               ),
               const SizedBox(height: 10),
-              for (var i = 0; i < area1.generators.length; i++) ...[
-                final g = area1.generators[i];
+              ...area1.generators.asMap().entries.map((entry) {
+                final i = entry.key;
+                final g = entry.value;
                 final rSys = g.droopOnSystemBase(sBase);
-                Container(
+                return Container(
                   margin: const EdgeInsets.only(bottom: 6),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
@@ -843,7 +844,7 @@ class _LfcScreenState extends ConsumerState<LfcScreen>
                       Text('${g.name}: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                       Expanded(
                         child: Text(
-                          'R_${i + 1,sys} = ${(g.droopR * 100).toStringAsFixed(1)}% × (${sBase.toStringAsFixed(0)} / ${g.mvaBase.toStringAsFixed(0)}) = ${rSys.toStringAsFixed(4)} pu',
+                          'R_{${i + 1},sys} = ${(g.droopR * 100).toStringAsFixed(1)}% × (${sBase.toStringAsFixed(0)} / ${g.mvaBase.toStringAsFixed(0)}) = ${rSys.toStringAsFixed(4)} pu',
                           style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.blueAccent),
                         ),
                       ),
@@ -853,8 +854,8 @@ class _LfcScreenState extends ConsumerState<LfcScreen>
                       ),
                     ],
                   ),
-                ),
-              ],
+                );
+              }),
             ],
           ),
         ),
@@ -887,12 +888,15 @@ class _LfcScreenState extends ConsumerState<LfcScreen>
                   children: [
                     Text('• Load damping constant: D = ${area1.dampingD.toStringAsFixed(2)} pu/pu', style: const TextStyle(fontSize: 12)),
                     const SizedBox(height: 4),
-                    for (var i = 0; i < area1.generators.length; i++) ...[
-                      final g = area1.generators[i];
+                    ...area1.generators.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final g = entry.value;
                       final rSys = g.droopOnSystemBase(sBase);
-                      Text('• 1 / R_${i + 1,sys} = 1 / ${rSys.toStringAsFixed(4)} = ${(1.0 / rSys).toStringAsFixed(4)} pu/pu', style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-                      const SizedBox(height: 2),
-                    ],
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text('• 1 / R_{${i + 1},sys} = 1 / ${rSys.toStringAsFixed(4)} = ${(1.0 / rSys).toStringAsFixed(4)} pu/pu', style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                      );
+                    }),
                     const Divider(height: 14),
                     Text(
                       'β_sys = ${area1.dampingD.toStringAsFixed(2)} + ${area1.generators.map((g) => (1.0 / g.droopOnSystemBase(sBase)).toStringAsFixed(2)).join(" + ")} = ${betaSys.toStringAsFixed(4)} pu/pu',
